@@ -1,28 +1,27 @@
 # 🌟 LLMUsageBar (AI 用量监控 · macOS 菜单栏原生应用)
 
-一款参考 GitHub 热门开源菜单栏工具（如 Stats、Ice、ClaudeBar）设计的 **macOS 原生菜单栏 (Menu Bar) 工具**。专为开发者打造，实时监控 **Google Gemini** 与 **智谱 AI (zai)** 的 API 配额与用量。
+一款参考 GitHub 热门开源菜单栏工具（如 Stats、Ice、ClaudeBar）设计的 **macOS 原生菜单栏 (Menu Bar) 工具**。专为开发者打造，实时监控 **Google Gemini**、**Anthropic Claude** 与 **智谱 AI (BigModel)** 的 API 配额与真实用量。
 
 ---
 
 ## ✨ 核心特性
 
-- 🖥 **原生 macOS 体验**：使用纯原生 Swift + SwiftUI + AppKit 开发，体积仅 **~890 KB**，毫秒级响应，内存占用极低（~15MB），无 Electron/Webview 臃肿负担。
-- 🪄 **状态栏常驻**：常驻屏幕右上角菜单栏，支持 SF Symbol 图标，可切换“仅图标”、“智谱额度%”、“状态在线圆点”等展示模式。
-- 🔮 **现代毛玻璃 UI (Vibrant Popover)**：
-  - 点击菜单栏图标即刻呼出精美悬浮面板，采用 macOS 原生 Material 毛玻璃质感与圆角卡片设计。
-  - 暗色 / 浅色模式全自适应。
-- ⚡️ **智谱 AI (zai / GLM)** 监控：
-  - 直连官方配额端点，支持 Coding Plan 5小时滑动窗口 / 周度额度监控。
-  - 动态圆环进度条（Circular Progress Ring）与 Token 消耗统计。
-  - 内置 GLM-4-Plus、GLM-4-Air、GLM-4-Flash 等主流模型定价参考速查。
-- 💎 **Google Gemini** 监控：
-  - 连通性测试与毫秒级延迟探测。
-  - 自动获取项目可用模型清单。
-  - 内置 Gemini 2.5 Pro / Flash、Gemini 2.0 Flash 等最新主流模型定价指南与官方控制台一键直达。
+- 🖥 **原生 macOS 体验**：使用纯原生 Swift + SwiftUI + AppKit 开发，体积仅 **~900 KB**，毫秒级响应，内存占用极低（~15MB），无 Electron 臃肿负担。
+- 🪄 **状态栏常驻与便捷交互**：
+  - 常驻屏幕右上角菜单栏，支持 SF Symbol 图标。
+  - **点击外部自动收起**：点击桌面任意空白处或切换其他应用窗口时，面板自动收起；点击图标切换自带防抖保护。
+  - 支持右键快捷菜单（立即刷新全部、添加账号、设置、退出）。
+- 👥 **多账号与多模型统一管理**：
+  - 一个账号卡片统一展示该账号下的所有模型额度（避免按模型切碎账号）。
+  - 支持快捷开启/关闭单个账号监控，直观展示实时连通状态与刷新倒计时。
+- ⚡️ **真实用量本地/云端实时同步**：
+  - **Antigravity 本地 IDE 极速 RPC 同步**：0.09s 毫秒级直连本地 Language Server，精准获取 Google Gemini (2.5 Pro / Flash) 与 Anthropic Claude (Opus 4 / Sonnet 4) 的真实剩余额度与重置时间倒计时。
+  - **智谱 AI (BigModel / Coding Plan)**：精准解析 5小时滑动窗口额度、周度额度与 MCP 工具调用额度，与官网个人中心完全一致。
+- 🔮 **现代设计与深浅主题自适应**：
+  - 原生跟随 macOS 系统深浅色外观切换，高对比度排版，清晰易读。
 - ⚙️ **配置与安全**：
-  - API Key 安全本地持久化，支持密码显隐切换与一键连通性测试。
+  - API Key 仅保存在本机 UserDefaults，敏感信息前端支持显隐切换与一键连通性测试。
   - 支持自定义后台自动刷新频率（1分钟 / 3分钟 / 5分钟 / 15分钟）。
-  - 支持右键快捷菜单（立即刷新、偏好设置、退出）。
 
 ---
 
@@ -47,36 +46,37 @@ open build/LLMUsageBar.app
 
 1. **呼出面板**：
    - 点击屏幕右上角菜单栏的 **✨ (闪烁星标)** 图标，即可弹出悬浮监控面板。
-2. **初次配置**：
-   - 点击面板顶部的 **⚙️ 设置**（或右键菜单栏图标选择“偏好设置”）。
-   - 分别输入你的：
-     - **智谱 (zai) API Key**（在 [智谱开放平台](https://open.bigmodel.cn/usercenter/apikeys) 获取）
-     - **Google Gemini API Key**（在 [Google AI Studio](https://aistudio.google.com/apikey) 获取）
-   - 点击旁边的 **测试** 按钮验证连通性，然后点击 **保存配置**。
+   - 点击桌面任意空白处即可自动收起。
+2. **添加与管理账号**：
+   - 点击面板顶部的 **「账号」** 或右上角的 **「+」** 加号。
+   - 输入账号名称与 API Key，点击 **「测试连接」** 验证无误后即可保存启用。
 3. **右键快捷操作**：
-   - 鼠标右键点击菜单栏图标，可弹出快速菜单：支持 **立即刷新**、**偏好设置** 与 **退出程序**。
+   - 鼠标右键点击菜单栏图标，可弹出快速菜单：支持 **立即刷新全部**、**添加新账号**、**管理账号** 与 **退出**。
 
 ---
 
-## 🛠 技术架构
+## 🛠 项目架构
 
 ```
 LLMUsageBar/
 ├── App/
-│   ├── AppDelegate.swift    # 状态栏图标 (NSStatusItem) 与 Popover 生命周期管理
+│   ├── AppDelegate.swift    # 状态栏图标 (NSStatusItem)、Popover 与全局外部点击监听
 │   └── main.swift           # 原生应用入口
 ├── Models/
-│   ├── AppState.swift       # 全局响应式状态与后台轮询定时器
+│   ├── Account.swift        # 多账号与模型配额数据模型
+│   ├── AppState.swift       # 全局响应式状态、定时轮询与数据同步调度
 │   └── ConfigManager.swift  # 本地持久化配置中心
 ├── Services/
-│   ├── GeminiService.swift  # Google Gemini API 连通性探测与模型清单检索
-│   └── ZhipuService.swift   # 智谱 JWT 规范签名与配额接口查询
+│   ├── LocalIDEService.swift# Antigravity 本地 IDE 极速 RPC 额度发现与同步
+│   ├── ZhipuService.swift   # 智谱 BigModel 额度接口解析与连通测试
+│   └── GeminiService.swift  # Gemini 官方接口服务
 └── Views/
     ├── MenuBarView.swift     # 悬浮面板主框架 (Navigation & TabBar)
-    ├── OverviewView.swift    # 双模型监控综合卡片与圆环进度条
-    ├── ZhipuDetailView.swift # 智谱额度与套餐用量详情
-    ├── GeminiDetailView.swift# Gemini 延迟分析与定价参考
-    ├── SettingsView.swift    # API Key 配置与显示模式设置
+    ├── OverviewView.swift    # 综合概览视图
+    ├── AccountsManageView.swift # 账号增删查改与 API Key 管理
+    ├── SettingsView.swift    # 刷新间隔与显示模式偏好设置
     └── Components/
+        ├── AccountCardView.swift      # 账号配额卡片（支持进度条与重置倒计时）
         └── CircularProgressView.swift # 矢量圆环进度组件
 ```
+
