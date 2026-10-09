@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI API 用量监控</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+/* ===== CSS Variables ===== */
+:root {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #0f0f23;
+  --bg-tertiary: #1a1a2e;
+  --card-bg: rgba(255,255,255,0.04);
+  --card-border: rgba(255,255,255,0.08);
+  --card-hover-border: rgba(255,255,255,0.15);
+  --glass-bg: rgba(255,255,255,0.06);
+  --gemini-color: #4285f4;
+  --gemini-glow: rgba(66,133,244,0.3);
+  --zhipu-color: #00d4aa;
+  --zhipu-glow: rgba(0,212,170,0.3);
+  --accent: #7c3aed;
+  --accent-glow: rgba(124,58,237,0.3);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; scroll-behavior: smooth; }
+body {
+  font-family: var(--font);
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Background animated gradient orbs */
+body::before, body::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+  z-index: -1;
+  animation: float 20s ease-in-out infinite;
+}
+body::before {
+  width: 600px; height: 600px;
+  background: var(--gemini-color);
+  top: -200px; right: -200px;
+}
+body::after {
+  width: 500px; height: 500px;
+  background: var(--zhipu-color);
+  bottom: -150px; left: -150px;
+  animation-delay: -10s;
+}
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ===== Navigation ===== */
+.navbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 64px;
+  background: rgba(10,10,26,0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--card-border);
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 1.3rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--gemini-color), var(--zhipu-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.nav-brand svg { width: 28px; height: 28px; }
+.nav-actions { display: flex; align-items: center; gap: 16px; }
+.nav-info {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.85rem; color: var(--text-muted);
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border: none; border-radius: var(--radius-sm);
+  font-family: var(--font); font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; transition: var(--transition);
+  background: var(--glass-bg); color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+.btn:hover { background: rgba(255,255,255,0.1); border-color: var(--card-hover-border); transform: translateY(-1px); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #6d28d9);
+  border-color: transparent; color: #fff;
+}
+.btn-primary:hover { box-shadow: 0 4px 20px var(--accent-glow); }
+.btn-icon { padding: 8px; border-radius: 10px; font-size: 1.1rem; line-height: 1; }
+.auto-refresh-toggle {
+  display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);
+}
+.toggle-switch {
+  position: relative; width: 40px; height: 22px; cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--text-muted); border-radius: 11px;
+  transition: var(--transition);
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 16px; height: 16px; border-radius: 50%;
+  left: 3px; top: 3px;
+  background: #fff; transition: var(--transition);
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--success); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+/* ===== Main Content ===== */
+.main { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; }
+
+/* ===== Provider Cards ===== */
+.provider-cards {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  margin-bottom: 24px;
+}
+.provider-card {
+  position: relative; overflow: hidden;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 28px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: var(--transition);
+}
+.provider-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--card-hover-border);
+  box-shadow: var(--shadow);
+}
+.provider-card.gemini:hover { box-shadow: 0 8px 40px var(--gemini-glow); }
+.provider-card.zhipu:hover { box-shadow: 0 8px 40px var(--zhipu-glow); }
+
+/* Card glow accent line */
+.provider-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.provider-card.gemini::before { background: linear-gradient(90deg, var(--gemini-color), #60a5fa); }
+.provider-card.zhipu::before { background: linear-gradient(90deg, var(--zhipu-color), #34d399); }
+
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.card-title {
+  display: flex; align-items: center; gap: 12px;
+}
+.card-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; font-weight: 700;
+}
+.gemini .card-icon { background: rgba(66,133,244,0.15); color: var(--gemini-color); }
+.zhipu .card-icon { background: rgba(0,212,170,0.15); color: var(--zhipu-color); }
+.card-name { font-size: 1.15rem; font-weight: 600; }
+.card-subtitle { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 0.75rem; font-weight: 500;
+}
+.status-badge.connected { background: rgba(16,185,129,0.15); color: var(--success); }
+.status-badge.disconnected { background: rgba(239,68,68,0.15); color: var(--error); }
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+.connected .status-dot { background: var(--success); }
+.disconnected .status-dot { background: var(--error); }
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.card-body { display: flex; align-items: center; gap: 32px; }
+
+/* Circular progress ring */
+.progress-ring-container {
+  position: relative; flex-shrink: 0;
+  width: 110px; height: 110px;
+}
+.progress-ring { transform: rotate(-90deg); }
+.progress-ring-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 8; }
+.progress-ring-fill {
+  fill: none; stroke-width: 8; stroke-linecap: round;
+  transition: stroke-dashoffset 1s ease-in-out;
+}
+.gemini .progress-ring-fill { stroke: var(--gemini-color); }
+.zhipu .progress-ring-fill { stroke: var(--zhipu-color); }
+.progress-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.progress-value { font-size: 1.6rem; font-weight: 700; }
+.progress-label { font-size: 0.7rem; color: var(--text-muted); }
+
+.card-stats { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.stat-item {}
+.stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+.stat-value { font-size: 1.25rem; font-weight: 700; }
+.stat-unit { font-size: 0.8rem; font-weight: 400; color: var(--text-secondary); }
+.gemini .stat-value { color: var(--gemini-color); }
+.zhipu .stat-value { color: var(--zhipu-color); }
+
+/* ===== Charts Grid ===== */
+.charts-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  margin-bottom: 24px;
+}
+.chart-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: var(--transition);
+}
+.chart-card:hover {
+  border-color: var(--card-hover-border);
+  box-shadow: var(--shadow);
+}
+.chart-title {
+  font-size: 1rem; font-weight: 600; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 8px;
+}
+.chart-title-icon { font-size: 1.1rem; }
+.chart-wrapper { position: relative; height: 260px; }
+
+/* ===== Records Table ===== */
+.table-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.table-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.table-container { overflow-x: auto; }
+table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+thead th {
+  text-align: left; padding: 12px 16px;
+  color: var(--text-muted); font-weight: 500;
+  border-bottom: 1px solid var(--card-border);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+}
+tbody tr { transition: var(--transition); }
+tbody tr:hover { background: rgba(255,255,255,0.03); }
+.provider-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 12px;
+  font-size: 0.75rem; font-weight: 500;
+}
+.provider-tag.gemini { background: rgba(66,133,244,0.15); color: var(--gemini-color); }
+.provider-tag.zhipu { background: rgba(0,212,170,0.15); color: var(--zhipu-color); }
+.status-tag { padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+.status-tag.success { background: rgba(16,185,129,0.15); color: var(--success); }
+.status-tag.error { background: rgba(239,68,68,0.15); color: var(--error); }
+.model-name { color: var(--text-secondary); font-family: monospace; font-size: 0.8rem; }
+.pagination {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 20px;
+}
+.page-btn {
+  padding: 6px 14px; border: 1px solid var(--card-border); border-radius: 8px;
+  background: transparent; color: var(--text-secondary);
+  font-family: var(--font); font-size: 0.8rem;
+  cursor: pointer; transition: var(--transition);
+}
+.page-btn:hover:not(:disabled) { background: var(--glass-bg); color: var(--text-primary); }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.page-info { font-size: 0.8rem; color: var(--text-muted); padding: 0 12px; }
+
+/* ===== Settings Modal ===== */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.modal-overlay.active { display: flex; opacity: 1; }
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 32px;
+  width: 520px; max-width: 90vw;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  transform: translateY(20px); transition: transform 0.3s ease;
+}
+.modal-overlay.active .modal { transform: translateY(0); }
+.modal-title {
+  font-size: 1.3rem; font-weight: 700; margin-bottom: 24px;
+  display: flex; align-items: center; gap: 10px;
+}
+.form-group { margin-bottom: 20px; }
+.form-label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+.form-input-wrap {
+  display: flex; align-items: center; gap: 8px;
+}
+.form-input {
+  flex: 1; padding: 10px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: monospace; font-size: 0.85rem;
+  transition: var(--transition);
+}
+.form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.form-input::placeholder { color: var(--text-muted); }
+.btn-test {
+  padding: 10px 14px; border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm); background: var(--glass-bg);
+  color: var(--text-secondary); cursor: pointer;
+  font-size: 0.8rem; white-space: nowrap;
+  transition: var(--transition);
+}
+.btn-test:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.btn-test.testing { pointer-events: none; opacity: 0.6; }
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; }
+.btn-cancel {
+  padding: 10px 20px; border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm); background: transparent;
+  color: var(--text-secondary); cursor: pointer;
+  font-family: var(--font); font-size: 0.85rem;
+  transition: var(--transition);
+}
+.btn-cancel:hover { background: var(--glass-bg); }
+.test-result {
+  font-size: 0.8rem; margin-top: 6px; padding: 6px 10px;
+  border-radius: 6px; display: none;
+}
+.test-result.show { display: block; }
+.test-result.success { background: rgba(16,185,129,0.1); color: var(--success); }
+.test-result.error { background: rgba(239,68,68,0.1); color: var(--error); }
+
+/* ===== Toast ===== */
+.toast-container {
+  position: fixed; top: 80px; right: 24px; z-index: 2000;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  padding: 12px 20px; border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 500;
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+  animation-fill-mode: forwards;
+}
+.toast.success { background: rgba(16,185,129,0.2); color: var(--success); border-color: rgba(16,185,129,0.3); }
+.toast.error { background: rgba(239,68,68,0.2); color: var(--error); border-color: rgba(239,68,68,0.3); }
+.toast.info { background: rgba(66,133,244,0.2); color: var(--gemini-color); border-color: rgba(66,133,244,0.3); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fadeOut { to { opacity: 0; transform: translateX(50%); } }
+
+/* ===== Skeleton Loading ===== */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ===== Number Format ===== */
+.num-highlight { font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+
+/* ===== Responsive ===== */
+@media (max-width: 1024px) {
+  .provider-cards, .charts-grid { grid-template-columns: 1fr; }
+  .main { padding: 16px; }
+  .navbar { padding: 0 16px; }
+}
+@media (max-width: 640px) {
+  .card-body { flex-direction: column; }
+  .card-stats { grid-template-columns: 1fr 1fr; }
+  .nav-info { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Navigation -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="url(#brandGrad)" stroke-width="2" stroke-linecap="round">
+      <defs><linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4285f4"/><stop offset="100%" stop-color="#00d4aa"/></linearGradient></defs>
+      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"/>
+      <path d="M12 6v6l4 2"/>
+      <circle cx="12" cy="12" r="1.5" fill="url(#brandGrad)"/>
+      <path d="M8 9.5c1-2 3-3 4-3s3 1 4 3" stroke-width="1.5"/>
+    </svg>
+    AI API 用量监控
+  </div>
+  <div class="nav-actions">
+    <div class="nav-info">
+      <span>🕐</span>
+      <span id="lastRefreshTime">--</span>
+    </div>
+    <div class="auto-refresh-toggle">
+      <label class="toggle-switch">
+        <input type="checkbox" id="autoRefreshToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <span>自动刷新</span>
+    </div>
+    <button class="btn btn-icon" onclick="manualRefresh()" title="手动刷新">🔄</button>
+    <button class="btn btn-icon" onclick="openSettings()" title="设置">⚙️</button>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main">
+  <!-- Provider Status Cards -->
+  <section class="provider-cards">
+    <!-- Gemini Card -->
+    <div class="provider-card gemini">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-icon">G</div>
+          <div>
+            <div class="card-name">Google Gemini</div>
+            <div class="card-subtitle">generativelanguage.googleapis.com</div>
+          </div>
+        </div>
+        <span class="status-badge disconnected" id="geminiStatus">
+          <span class="status-dot"></span>
+          <span>未连接</span>
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="progress-ring-container">
+          <svg class="progress-ring" width="110" height="110" viewBox="0 0 110 110">
+            <circle class="progress-ring-bg" cx="55" cy="55" r="46"/>
+            <circle class="progress-ring-fill" cx="55" cy="55" r="46"
+              stroke-dasharray="289.03" stroke-dashoffset="289.03" id="geminiRing"/>
+          </svg>
+          <div class="progress-center">
+            <span class="progress-value num-highlight" id="geminiPercent">0%</span>
+            <span class="progress-label">已使用</span>
+          </div>
+        </div>
+        <div class="card-stats">
+          <div class="stat-item">
+            <div class="stat-label">今日请求</div>
+            <div class="stat-value num-highlight" id="geminiRequests">0 <span class="stat-unit">次</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日 Tokens</div>
+            <div class="stat-value num-highlight" id="geminiTokens">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日费用</div>
+            <div class="stat-value num-highlight" id="geminiCost">$0.00</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">账户余额</div>
+            <div class="stat-value num-highlight" id="geminiBalance">按量付费</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zhipu Card -->
+    <div class="provider-card zhipu">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-icon">智</div>
+          <div>
+            <div class="card-name">智谱 AI</div>
+            <div class="card-subtitle">open.bigmodel.cn</div>
+          </div>
+        </div>
+        <span class="status-badge disconnected" id="zhipuStatus">
+          <span class="status-dot"></span>
+          <span>未连接</span>
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="progress-ring-container">
+          <svg class="progress-ring" width="110" height="110" viewBox="0 0 110 110">
+            <circle class="progress-ring-bg" cx="55" cy="55" r="46"/>
+            <circle class="progress-ring-fill" cx="55" cy="55" r="46"
+              stroke-dasharray="289.03" stroke-dashoffset="289.03" id="zhipuRing"/>
+          </svg>
+          <div class="progress-center">
+            <span class="progress-value num-highlight" id="zhipuPercent">0%</span>
+            <span class="progress-label">已使用</span>
+          </div>
+        </div>
+        <div class="card-stats">
+          <div class="stat-item">
+            <div class="stat-label">今日请求</div>
+            <div class="stat-value num-highlight" id="zhipuRequests">0 <span class="stat-unit">次</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日 Tokens</div>
+            <div class="stat-value num-highlight" id="zhipuTokens">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日费用</div>
+            <div class="stat-value num-highlight" id="zhipuCost">¥0.00</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">剩余额度</div>
+            <div class="stat-value num-highlight" id="zhipuBalance">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Charts -->
+  <section class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title"><span class="chart-title-icon">📈</span> 每日 Token 用量趋势</div>
+      <div class="chart-wrapper"><canvas id="chartTokens"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="chart-title-icon">💰</span> 每日费用对比</div>
+      <div class="chart-wrapper"><canvas id="chartCost"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="chart-title-icon">🤖</span> 模型使用分布</div>
+      <div class="chart-wrapper"><canvas id="chartModels"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="chart-title-icon">✅</span> 请求成功率</div>
+      <div class="chart-wrapper"><canvas id="chartSuccess"></canvas></div>
+    </div>
+  </section>
+
+  <!-- Records Table -->
+  <section class="table-card">
+    <div class="table-header">
+      <div class="table-title">📋 最近调用记录</div>
+      <div class="page-info" id="recordsInfo">共 0 条</div>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>提供商</th>
+            <th>模型</th>
+            <th>输入 Tokens</th>
+            <th>输出 Tokens</th>
+            <th>费用</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody id="recordsBody">
+          <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </section>
+</main>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-title">⚙️ 设置</div>
+    <div class="form-group">
+      <label class="form-label">Google Gemini API Key</label>
+      <div class="form-input-wrap">
+        <input type="password" class="form-input" id="inputGeminiKey" placeholder="AIza...">
+        <button class="btn-test" onclick="testConnection('gemini')">测试</button>
+      </div>
+      <div class="test-result" id="testResultGemini"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">智谱 AI API Key</label>
+      <div class="form-input-wrap">
+        <input type="password" class="form-input" id="inputZhipuKey" placeholder="xxxxxxxx.xxxxxxxx">
+        <button class="btn-test" onclick="testConnection('zhipu')">测试</button>
+      </div>
+      <div class="test-result" id="testResultZhipu"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">自动刷新间隔（秒）</label>
+      <input type="number" class="form-input" id="inputRefreshInterval" value="60" min="10" max="3600" style="max-width:120px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+let autoRefreshTimer = null;
+let currentPage = 0;
+const pageSize = 20;
+let charts = {};
+
+// ===== Utility =====
+function formatNum(n) {
+  if (n === undefined || n === null) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+function formatTime(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function formatDate(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// ===== Toast =====
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// ===== API Calls =====
+async function fetchJSON(url, options = {}) {
+  try {
+    const resp = await fetch(url, options);
+    return await resp.json();
+  } catch (e) {
+    console.error('Fetch error:', url, e);
+    return null;
+  }
+}
+
+// ===== Update Status =====
+async function updateStatus() {
+  const data = await fetchJSON('/api/status');
+  if (!data) return;
+
+  // Gemini
+  const gs = document.getElementById('geminiStatus');
+  if (data.gemini?.connected) {
+    gs.className = 'status-badge connected';
+    gs.innerHTML = '<span class="status-dot"></span><span>已连接</span>';
+  } else {
+    gs.className = 'status-badge disconnected';
+    gs.innerHTML = '<span class="status-dot"></span><span>未连接</span>';
+  }
+
+  // Zhipu
+  const zs = document.getElementById('zhipuStatus');
+  if (data.zhipu?.connected) {
+    zs.className = 'status-badge connected';
+    zs.innerHTML = '<span class="status-dot"></span><span>已连接</span>';
+  } else {
+    zs.className = 'status-badge disconnected';
+    zs.innerHTML = '<span class="status-dot"></span><span>未连接</span>';
+  }
+
+  if (data.last_refresh) {
+    document.getElementById('lastRefreshTime').textContent = '上次刷新: ' + formatTime(data.last_refresh);
+  }
+}
+
+// ===== Update Summary Cards =====
+async function updateSummary() {
+  const data = await fetchJSON('/api/usage/summary');
+  if (!data) return;
+
+  const g = data.gemini || {};
+  const z = data.zhipu || {};
+
+  // Gemini card
+  document.getElementById('geminiRequests').innerHTML = formatNum(g.today_requests) + ' <span class="stat-unit">次</span>';
+  document.getElementById('geminiTokens').textContent = formatNum(g.today_tokens);
+  document.getElementById('geminiCost').textContent = '$' + (g.today_cost || 0).toFixed(4);
+  document.getElementById('geminiBalance').textContent = g.balance === -1 ? '按量付费' : formatNum(g.balance);
+
+  const gPct = g.usage_percentage || 0;
+  document.getElementById('geminiPercent').textContent = gPct + '%';
+  const gRing = document.getElementById('geminiRing');
+  gRing.style.strokeDashoffset = 289.03 - (289.03 * gPct / 100);
+
+  // Zhipu card
+  document.getElementById('zhipuRequests').innerHTML = formatNum(z.today_requests) + ' <span class="stat-unit">次</span>';
+  document.getElementById('zhipuTokens').textContent = formatNum(z.today_tokens);
+  document.getElementById('zhipuCost').textContent = '¥' + (z.today_cost || 0).toFixed(4);
+  document.getElementById('zhipuBalance').textContent = formatNum(z.balance || 0);
+
+  const zPct = z.usage_percentage || 0;
+  document.getElementById('zhipuPercent').textContent = zPct + '%';
+  const zRing = document.getElementById('zhipuRing');
+  zRing.style.strokeDashoffset = 289.03 - (289.03 * zPct / 100);
+}
+
+// ===== Charts =====
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 }, boxWidth: 12, padding: 16 } }
+  },
+  scales: {
+    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+  }
+};
+
+function createGradient(ctx, color1, color2) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+  gradient.addColorStop(0, color1);
+  gradient.addColorStop(1, color2);
+  return gradient;
+}
+
+async function updateCharts() {
+  const daily = await fetchJSON('/api/usage/daily?days=30');
+  const models = await fetchJSON('/api/usage/models?days=30');
+  if (!daily) return;
+
+  // Process daily data
+  const dates = [...new Set(daily.map(d => d.date))].sort();
+  const geminiDaily = {}, zhipuDaily = {};
+  daily.forEach(d => {
+    if (d.provider === 'gemini') geminiDaily[d.date] = d;
+    else zhipuDaily[d.date] = d;
+  });
+
+  const labels = dates.map(d => d.slice(5)); // MM-DD
+
+  // Chart 1: Token Trend
+  const ctx1 = document.getElementById('chartTokens').getContext('2d');
+  if (charts.tokens) charts.tokens.destroy();
+  charts.tokens = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Gemini',
+          data: dates.map(d => (geminiDaily[d]?.total_tokens || 0)),
+          borderColor: '#4285f4', backgroundColor: createGradient(ctx1, 'rgba(66,133,244,0.2)', 'rgba(66,133,244,0)'),
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5
+        },
+        {
+          label: '智谱',
+          data: dates.map(d => (zhipuDaily[d]?.total_tokens || 0)),
+          borderColor: '#00d4aa', backgroundColor: createGradient(ctx1, 'rgba(0,212,170,0.2)', 'rgba(0,212,170,0)'),
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5
+        }
+      ]
+    },
+    options: { ...chartDefaults, interaction: { intersect: false, mode: 'index' } }
+  });
+
+  // Chart 2: Cost Comparison
+  const ctx2 = document.getElementById('chartCost').getContext('2d');
+  if (charts.cost) charts.cost.destroy();
+  charts.cost = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Gemini (USD)', data: dates.map(d => (geminiDaily[d]?.total_cost || 0)),
+          backgroundColor: 'rgba(66,133,244,0.6)', borderColor: '#4285f4', borderWidth: 1, borderRadius: 4
+        },
+        {
+          label: '智谱 (CNY)', data: dates.map(d => (zhipuDaily[d]?.total_cost || 0)),
+          backgroundColor: 'rgba(0,212,170,0.6)', borderColor: '#00d4aa', borderWidth: 1, borderRadius: 4
+        }
+      ]
+    },
+    options: chartDefaults
+  });
+
+  // Chart 3: Model Distribution
+  if (models && models.length > 0) {
+    const ctx3 = document.getElementById('chartModels').getContext('2d');
+    if (charts.models) charts.models.destroy();
+    const colors = ['#4285f4','#00d4aa','#7c3aed','#f59e0b','#ef4444','#06b6d4','#f472b6','#84cc16'];
+    charts.models = new Chart(ctx3, {
+      type: 'doughnut',
+      data: {
+        labels: models.map(m => m.model),
+        datasets: [{
+          data: models.map(m => m.tokens || 0),
+          backgroundColor: models.map((_, i) => colors[i % colors.length]),
+          borderWidth: 0, hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: '#94a3b8', font: { family: 'Inter', size: 10 }, boxWidth: 10, padding: 10 }
+          }
+        }
+      }
+    });
+  }
+
+  // Chart 4: Success Rate
+  const ctx4 = document.getElementById('chartSuccess').getContext('2d');
+  if (charts.success) charts.success.destroy();
+  charts.success = new Chart(ctx4, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Gemini 成功率',
+          data: dates.map(d => {
+            const rec = geminiDaily[d];
+            if (!rec || !rec.total_requests) return null;
+            return ((rec.success_count / rec.total_requests) * 100).toFixed(1);
+          }),
+          borderColor: '#4285f4', backgroundColor: 'transparent',
+          tension: 0.4, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5
+        },
+        {
+          label: '智谱 成功率',
+          data: dates.map(d => {
+            const rec = zhipuDaily[d];
+            if (!rec || !rec.total_requests) return null;
+            return ((rec.success_count / rec.total_requests) * 100).toFixed(1);
+          }),
+          borderColor: '#00d4aa', backgroundColor: 'transparent',
+          tension: 0.4, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5
+        }
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 80, max: 100, ticks: { ...chartDefaults.scales.y.ticks, callback: v => v + '%' } }
+      },
+      interaction: { intersect: false, mode: 'index' }
+    }
+  });
+}
+
+// ===== Records Table =====
+async function updateRecords(page = 0) {
+  currentPage = page;
+  const offset = page * pageSize;
+  const data = await fetchJSON(`/api/usage/records?limit=${pageSize}&offset=${offset}`);
+  if (!data) return;
+
+  const { records, total } = data;
+  document.getElementById('recordsInfo').textContent = `共 ${total} 条`;
+
+  const tbody = document.getElementById('recordsBody');
+  if (!records || records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">暂无记录</td></tr>';
+  } else {
+    tbody.innerHTML = records.map(r => `
+      <tr>
+        <td>${formatDate(r.recorded_at)}</td>
+        <td><span class="provider-tag ${r.provider}">${r.provider === 'gemini' ? 'Gemini' : '智谱'}</span></td>
+        <td><span class="model-name">${r.model}</span></td>
+        <td class="num-highlight">${formatNum(r.input_tokens)}</td>
+        <td class="num-highlight">${formatNum(r.output_tokens)}</td>
+        <td class="num-highlight">${r.currency === 'CNY' ? '¥' : '$'}${(r.cost || 0).toFixed(4)}</td>
+        <td><span class="status-tag ${r.status}">${r.status === 'success' ? '成功' : '失败'}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(total / pageSize);
+  const pag = document.getElementById('pagination');
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+  let html = `<button class="page-btn" onclick="updateRecords(${page - 1})" ${page === 0 ? 'disabled' : ''}>‹ 上一页</button>`;
+  const start = Math.max(0, page - 2);
+  const end = Math.min(totalPages, start + 5);
+  for (let i = start; i < end; i++) {
+    html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="updateRecords(${i})">${i + 1}</button>`;
+  }
+  html += `<button class="page-btn" onclick="updateRecords(${page + 1})" ${page >= totalPages - 1 ? 'disabled' : ''}">下一页 ›</button>`;
+  pag.innerHTML = html;
+}
+
+// ===== Settings =====
+async function openSettings() {
+  const data = await fetchJSON('/api/settings');
+  if (data) {
+    document.getElementById('inputGeminiKey').value = data.gemini_api_key_set ? data.gemini_api_key : '';
+    document.getElementById('inputZhipuKey').value = data.zhipu_api_key_set ? data.zhipu_api_key : '';
+    document.getElementById('inputRefreshInterval').value = data.refresh_interval || 60;
+  }
+  document.querySelectorAll('.test-result').forEach(el => { el.className = 'test-result'; el.textContent = ''; });
+  document.getElementById('settingsModal').classList.add('active');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('active');
+}
+
+async function saveSettings() {
+  const payload = {
+    gemini_api_key: document.getElementById('inputGeminiKey').value,
+    zhipu_api_key: document.getElementById('inputZhipuKey').value,
+    refresh_interval: parseInt(document.getElementById('inputRefreshInterval').value) || 60
+  };
+  const result = await fetchJSON('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (result?.success) {
+    showToast('设置已保存', 'success');
+    closeSettings();
+    refreshAll();
+  } else {
+    showToast('保存失败: ' + (result?.message || '未知错误'), 'error');
+  }
+}
+
+async function testConnection(provider) {
+  const keyInput = provider === 'gemini'
+    ? document.getElementById('inputGeminiKey')
+    : document.getElementById('inputZhipuKey');
+  const resultEl = document.getElementById(provider === 'gemini' ? 'testResultGemini' : 'testResultZhipu');
+
+  resultEl.className = 'test-result show info';
+  resultEl.textContent = '测试中...';
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'rgba(66,133,244,0.1)';
+  resultEl.style.color = '#4285f4';
+
+  const result = await fetchJSON('/api/test-connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, api_key: keyInput.value })
+  });
+
+  if (result?.success) {
+    resultEl.className = 'test-result show success';
+    resultEl.textContent = '✅ ' + result.message;
+  } else {
+    resultEl.className = 'test-result show error';
+    resultEl.textContent = '❌ ' + (result?.message || '连接失败');
+  }
+}
+
+// ===== Refresh =====
+async function refreshAll() {
+  await Promise.all([updateStatus(), updateSummary(), updateCharts(), updateRecords(currentPage)]);
+}
+
+async function manualRefresh() {
+  showToast('正在刷新...', 'info');
+  await fetchJSON('/api/refresh', { method: 'POST' });
+  await refreshAll();
+  showToast('刷新完成', 'success');
+}
+
+function setupAutoRefresh() {
+  const toggle = document.getElementById('autoRefreshToggle');
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  if (toggle.checked) {
+    autoRefreshTimer = setInterval(refreshAll, 60000);
+  }
+  toggle.addEventListener('change', () => {
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    if (toggle.checked) {
+      autoRefreshTimer = setInterval(refreshAll, 60000);
+      showToast('自动刷新已开启', 'success');
+    } else {
+      showToast('自动刷新已关闭', 'info');
+    }
+  });
+}
+
+// Close modal on overlay click
+document.getElementById('settingsModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSettings();
+});
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', () => {
+  refreshAll();
+  setupAutoRefresh();
+});
+</script>
+</body>
+</html>
