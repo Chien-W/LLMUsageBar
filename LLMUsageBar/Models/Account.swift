@@ -21,10 +21,36 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
     var name: String                     // 如 "Gemini 模型", "Claude 和 GPT 模型"
     var weeklyPct: Int                   // 0 ~ 100
     var fiveHourPct: Int                 // 0 ~ 100
+    var weeklyDisabled: Bool? = false    // 是否已停用/不适用（如周额度用尽后 5 小时限额不适用）
+    var fiveHourDisabled: Bool? = false  // 是否已停用/不适用
     var weeklyResetTarget: Date
     var fiveHourResetTarget: Date
     var weeklyDescription: String
     var fiveHourDescription: String
+    
+    init(
+        id: String,
+        name: String,
+        weeklyPct: Int,
+        fiveHourPct: Int,
+        weeklyDisabled: Bool? = false,
+        fiveHourDisabled: Bool? = false,
+        weeklyResetTarget: Date,
+        fiveHourResetTarget: Date,
+        weeklyDescription: String,
+        fiveHourDescription: String
+    ) {
+        self.id = id
+        self.name = name
+        self.weeklyPct = weeklyPct
+        self.fiveHourPct = fiveHourPct
+        self.weeklyDisabled = weeklyDisabled
+        self.fiveHourDisabled = fiveHourDisabled
+        self.weeklyResetTarget = weeklyResetTarget
+        self.fiveHourResetTarget = fiveHourResetTarget
+        self.weeklyDescription = weeklyDescription
+        self.fiveHourDescription = fiveHourDescription
+    }
 }
 
 struct Account: Identifiable, Codable, Equatable {
@@ -63,7 +89,20 @@ struct QuotaWindowInfo: Identifiable {
     var title: String              // 如 "剩余周额度"
     var percentage: Int            // 0 ~ 100
     var resetDescription: String   // 实时计算的倒计时文案
+    var isDisabled: Bool = false   // 当为 true 时，表示当前不适用（不展示百分比和圆环，与官方 IDE 一致）
     var isDepleted: Bool { percentage <= 0 }
+    
+    init(
+        title: String,
+        percentage: Int,
+        resetDescription: String,
+        isDisabled: Bool = false
+    ) {
+        self.title = title
+        self.percentage = percentage
+        self.resetDescription = resetDescription
+        self.isDisabled = isDisabled
+    }
 }
 
 struct ModelGroupRuntimeStatus: Identifiable {

@@ -144,8 +144,10 @@ final class AppState: ObservableObject {
                     if weeklyBucket == nil && rpcGroup.buckets.count > 0 { weeklyBucket = rpcGroup.buckets[0] }
                     if fiveHourBucket == nil && rpcGroup.buckets.count > 1 { fiveHourBucket = rpcGroup.buckets[1] }
                     
-                    let wPct = weeklyBucket?.percentage ?? 100
-                    let fPct = fiveHourBucket?.percentage ?? 100
+                    let wDisabled = weeklyBucket?.isDisabled ?? false
+                    let fDisabled = fiveHourBucket?.isDisabled ?? false
+                    let wPct = wDisabled ? 0 : (weeklyBucket?.percentage ?? 100)
+                    let fPct = fDisabled ? 0 : (fiveHourBucket?.percentage ?? 100)
                     let wDate = weeklyBucket?.resetTime ?? now.addingTimeInterval(7 * 86400)
                     let fDate = fiveHourBucket?.resetTime ?? now.addingTimeInterval(5 * 3600)
                     let wDesc = weeklyBucket?.localizedDescription ?? ""
@@ -154,6 +156,8 @@ final class AppState: ObservableObject {
                     if let grpIdx = updatedGroups.firstIndex(where: { $0.id == targetGroupId }) {
                         updatedGroups[grpIdx].weeklyPct = wPct
                         updatedGroups[grpIdx].fiveHourPct = fPct
+                        updatedGroups[grpIdx].weeklyDisabled = wDisabled
+                        updatedGroups[grpIdx].fiveHourDisabled = fDisabled
                         updatedGroups[grpIdx].weeklyResetTarget = wDate
                         updatedGroups[grpIdx].fiveHourResetTarget = fDate
                         updatedGroups[grpIdx].weeklyDescription = wDesc
@@ -164,6 +168,8 @@ final class AppState: ObservableObject {
                             name: targetGroupName,
                             weeklyPct: wPct,
                             fiveHourPct: fPct,
+                            weeklyDisabled: wDisabled,
+                            fiveHourDisabled: fDisabled,
                             weeklyResetTarget: wDate,
                             fiveHourResetTarget: fDate,
                             weeklyDescription: wDesc,
@@ -250,13 +256,15 @@ final class AppState: ObservableObject {
                 let wQuota = QuotaWindowInfo(
                     title: "剩余周额度",
                     percentage: grp.weeklyPct,
-                    resetDescription: grp.weeklyDescription.isEmpty ? "正在与官方接口核对..." : grp.weeklyDescription
+                    resetDescription: grp.weeklyDescription.isEmpty ? "正在与官方接口核对..." : grp.weeklyDescription,
+                    isDisabled: grp.weeklyDisabled ?? false
                 )
                 
                 let fQuota = QuotaWindowInfo(
                     title: "剩余 5 小时限额",
                     percentage: grp.fiveHourPct,
-                    resetDescription: grp.fiveHourDescription.isEmpty ? "正在与官方接口核对..." : grp.fiveHourDescription
+                    resetDescription: grp.fiveHourDescription.isEmpty ? "正在与官方接口核对..." : grp.fiveHourDescription,
+                    isDisabled: grp.fiveHourDisabled ?? false
                 )
                 
                 groupStatuses.append(ModelGroupRuntimeStatus(

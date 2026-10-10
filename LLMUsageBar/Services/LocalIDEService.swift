@@ -17,6 +17,7 @@ struct LiveQuotaBucket {
     let window: String
     let remainingFraction: Double
     let percentage: Int
+    let isDisabled: Bool
     let resetTime: Date?
     let resetTimeRaw: String
     let localizedDescription: String
@@ -131,8 +132,9 @@ final class LocalIDEService {
                     let bDisplayName = b["displayName"] as? String ?? ""
                     let bDesc = b["description"] as? String ?? ""
                     let window = b["window"] as? String ?? ""
+                    let isDisabled = (b["disabled"] as? Bool) ?? false
                     let fraction = (b["remainingFraction"] as? NSNumber)?.doubleValue ?? 0.0
-                    let pct = max(0, min(100, Int(round(fraction * 100))))
+                    let pct = isDisabled ? 0 : max(0, min(100, Int(round(fraction * 100))))
                     let resetTimeRaw = b["resetTime"] as? String ?? ""
                     let resetDate = parseISODate(resetTimeRaw)
                     
@@ -140,6 +142,7 @@ final class LocalIDEService {
                         isClaudeGroup: displayName.lowercased().contains("claude"),
                         isWeekly: window.lowercased().contains("week"),
                         pct: pct,
+                        isDisabled: isDisabled,
                         resetDate: resetDate,
                         fallbackDesc: bDesc,
                         now: now
@@ -152,6 +155,7 @@ final class LocalIDEService {
                         window: window,
                         remainingFraction: fraction,
                         percentage: pct,
+                        isDisabled: isDisabled,
                         resetTime: resetDate,
                         resetTimeRaw: resetTimeRaw,
                         localizedDescription: locDesc
@@ -195,6 +199,7 @@ final class LocalIDEService {
         isClaudeGroup: Bool,
         isWeekly: Bool,
         pct: Int,
+        isDisabled: Bool,
         resetDate: Date?,
         fallbackDesc: String,
         now: Date
@@ -205,15 +210,32 @@ final class LocalIDEService {
         let hours = (Int(diff) % 86400) / 3600
         let mins = (Int(diff) % 3600) / 60
         
+        let hitWeekly = fallbackDesc.lowercased().contains("hit your weekly limit")
+        let hit5h = fallbackDesc.lowercased().contains("hit your 5-hour limit")
+        
+        if isDisabled {
+            // 当该限额被禁用（例如周额度用尽时，官方返回 disabled: true，表示5小时限额当前不适用）
+            if hitWeekly {
+                let timeStr = days > 0 ? "\(days) 天, \(hours) 小时" : "\(hours) 小时"
+                return "You have hit your weekly limit, the 5-hour limit does not currently apply. Your weekly limit will fully refresh in \(timeStr)."
+            }
+            return fallbackDesc
+        }
+        
         if isClaudeGroup {
             if isWeekly {
-                if pct <= 0 || fallbackDesc.contains("hit your 5-hour limit") {
+                if hitWeekly || pct <= 0 {
+                    let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时"
+                    return "You have hit your weekly limit, it \(timeStr). If on a supported paid plan you can use AI credits in the interim or upgrade to a higher tier.后刷新"
+                } else if hit5h {
                     return "You have hit your 5-hour limit, so the weekly limit does not currently apply. Your 5-hour limit will refresh in \(hours) 小时, \(mins) 分钟."
                 } else {
-                    return "您已使用部分周额度，将在 \(days) 天 \(hours) 小时后完全刷新。"
+                    let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时 \(mins) 分钟"
+                    return "您已使用部分周额度，将在 \(timeStr) 后完全刷新。"
                 }
             } else {
-                if pct <= 0 {
+                // Claude 5-hour
+                if hit5h || pct <= 0 {
                     return "You have hit your 5-hour limit, it will refresh in \(hours) 小时, \(mins) 分钟. If on a supported paid plan, you can use AI credits in the interim."
                 } else {
                     return "您已使用部分 5 小时额度，将在 \(hours) 小时 \(mins) 分钟后完全刷新。"
@@ -222,7 +244,13 @@ final class LocalIDEService {
         } else {
             // Gemini 模型
             if isWeekly {
-                return "您已使用部分周额度，将在 \(days) 天 \(hours) 小时后完全刷新。"
+                if pct <= 0 {
+                    let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时"
+                    return "您已用尽周额度，将在 \(timeStr) 后完全刷新。"
+                } else {
+                    let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时 \(mins) 分钟"
+                    return "您已使用部分周额度，将在 \(timeStr) 后完全刷新。"
+                }
             } else {
                 if pct <= 0 {
                     return "您已达到 5 小时限额，将在 \(hours) 小时 \(mins) 分钟后完全刷新。"

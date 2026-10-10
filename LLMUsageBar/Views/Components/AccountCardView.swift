@@ -39,8 +39,8 @@ struct AccountCardView: View {
                 ModelGroupRuntimeStatus(
                     id: grp.id,
                     name: grp.name,
-                    weeklyQuota: QuotaWindowInfo(title: "剩余周额度", percentage: grp.weeklyPct, resetDescription: grp.weeklyDescription),
-                    fiveHourQuota: QuotaWindowInfo(title: "剩余 5 小时限额", percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription)
+                    weeklyQuota: QuotaWindowInfo(title: "剩余周额度", percentage: grp.weeklyPct, resetDescription: grp.weeklyDescription, isDisabled: grp.weeklyDisabled ?? false),
+                    fiveHourQuota: QuotaWindowInfo(title: "剩余 5 小时限额", percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription, isDisabled: grp.fiveHourDisabled ?? false)
                 )
             }
             
@@ -162,14 +162,16 @@ struct AccountCardView: View {
             
             Spacer(minLength: 6)
             
-            // 右侧：百分比大字 + 环形指示器
-            HStack(spacing: 8) {
-                Text("\(info.percentage)%")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(NSColor.labelColor))
-                    .frame(minWidth: 38, alignment: .trailing)
-                
-                compactRing(percentage: info.percentage)
+            // 右侧：若当前限额已停用/不适用（例如周额度用尽后 5 小时限额不适用），右侧不展示百分比与圆环，与官方 IDE 保持 100% 一致！
+            if !info.isDisabled {
+                HStack(spacing: 8) {
+                    Text("\(info.percentage)%")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(NSColor.labelColor))
+                        .frame(minWidth: 38, alignment: .trailing)
+                    
+                    compactRing(percentage: info.percentage)
+                }
             }
         }
         .padding(.horizontal, 12)
