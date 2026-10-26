@@ -83,6 +83,35 @@ final class AppState: ObservableObject {
             ConfigManager.shared.accounts = loaded
         }
         
+        // 自动发现并挂载本地已配置的 OpenAI Codex
+        if !loaded.contains(where: { $0.provider == .codex }) && CodexService.shared.isInstalled() {
+            let authInfo = CodexService.shared.readAuthJsonInfo()
+            let codexAccount = Account(
+                name: "OpenAI Codex",
+                email: authInfo.email ?? "",
+                provider: .codex,
+                apiKey: "",
+                isEnabled: true,
+                createdAt: Date(),
+                modelGroups: [
+                    ModelGroupQuota(
+                        id: "codex_quota",
+                        name: "Codex 模型用量",
+                        weeklyPct: 100,
+                        fiveHourPct: 100,
+                        weeklyDisabled: false,
+                        fiveHourDisabled: true,
+                        weeklyResetTarget: Date().addingTimeInterval(30 * 86400),
+                        fiveHourResetTarget: Date(),
+                        weeklyDescription: "正在与 Codex 客户端核对...",
+                        fiveHourDescription: "正在与 Codex 客户端核对..."
+                    )
+                ]
+            )
+            loaded.append(codexAccount)
+            ConfigManager.shared.accounts = loaded
+        }
+        
         self.accounts = loaded
         
         let now = Date()
@@ -235,6 +264,28 @@ final class AppState: ObservableObject {
                         ConfigManager.shared.accounts = accounts
                     }
                 }
+            } else if acc.provider == .codex {
+                if acc.apiKey.isEmpty {
+                    // 本地 Codex CLI 直连
+                    if let codexRes = await CodexService.shared.fetchQuota() {
+                        if let idx = accounts.firstIndex(where: { $0.id == acc.id }) {
+                            if !codexRes.email.isEmpty {
+                                accounts[idx].email = codexRes.email
+                            }
+                            let planTitle = codexRes.planType.isEmpty ? "Codex" : "Codex (\(codexRes.planType.capitalized))"
+                            accounts[idx].name = "OpenAI \(planTitle)"
+                            
+                            let groups = CodexService.shared.buildModelGroups(from: codexRes, now: now)
+                            accounts[idx].modelGroups = groups
+                            ConfigManager.shared.accounts = accounts
+                        }
+                    }
+                } else {
+                    let check = await CodexService.shared.checkOpenAIKey(apiKey: acc.apiKey)
+                    if let idx = accounts.firstIndex(where: { $0.id == acc.id }), !accounts[idx].modelGroups.isEmpty {
+                        accounts[idx].modelGroups[0].weeklyDescription = check.message
+                    }
+                }
             } else if acc.provider == .google && !acc.apiKey.isEmpty {
                 let res = await GeminiService.shared.checkConnection(apiKey: acc.apiKey)
                 if let idx = accounts.firstIndex(where: { $0.id == acc.id }), !accounts[idx].modelGroups.isEmpty {
@@ -276,8 +327,20 @@ final class AppState: ObservableObject {
             }
             
             let isLocalIde = acc.provider == .google && acc.apiKey.isEmpty
-            let isConn = isLocalIde ? isIdeConnected : !acc.apiKey.isEmpty
-            let msg = isLocalIde ? (isIdeConnected ? "IDE 实时直连" : "等待 IDE 启动") : "API Key 授权"
+            let isLocalCodex = acc.provider == .codex && acc.apiKey.isEmpty
+            let isConn: Bool
+            let msg: String
+            
+            if isLocalIde {
+                isConn = isIdeConnected
+                msg = isIdeConnected ? "IDE 实时直连" : "等待 IDE 启动"
+            } else if isLocalCodex {
+                isConn = true
+                msg = "Codex 本地直连"
+            } else {
+                isConn = !acc.apiKey.isEmpty
+                msg = "API Key 授权"
+            }
             
             self.statuses[acc.id] = AccountRuntimeStatus(
                 id: acc.id,
@@ -317,6 +380,21 @@ final class AppState: ObservableObject {
                     fiveHourDescription: "额度充足，将在 5 小时后刷新。"
                 )
             ]
+        } else if provider == .codex {
+            groups = [
+                ModelGroupQuota(
+                    id: "codex_quota",
+                    name: "Codex 模型用量",
+                    weeklyPct: 100,
+                    fiveHourPct: 100,
+                    weeklyDisabled: false,
+                    fiveHourDisabled: true,
+                    weeklyResetTarget: now.addingTimeInterval(30 * 86400),
+                    fiveHourResetTarget: now,
+                    weeklyDescription: apiKey.isEmpty ? "正在与 Codex 客户端核对..." : "OpenAI API 待测试",
+                    fiveHourDescription: "普通调用权限正常"
+                )
+            ]
         } else if provider == .zhipu {
             groups = [
                 ModelGroupQuota(
@@ -332,9 +410,14 @@ final class AppState: ObservableObject {
             ]
         }
         
+        var finalEmail = email
+        if provider == .codex && email.isEmpty {
+            finalEmail = CodexService.shared.readAuthJsonInfo().email ?? ""
+        }
+        
         let newAcc = Account(
             name: finalName,
-            email: email,
+            email: finalEmail,
             provider: provider,
             apiKey: apiKey,
             isEnabled: true,
@@ -367,6 +450,20 @@ final class AppState: ObservableObject {
             let res = await GeminiService.shared.checkConnection(apiKey: key)
             isTestingConnection = false
             testResultMsg = res.isConnected ? "✅ 连接成功！检测到 \(res.modelsCount) 个可用模型" : "❌ 连接失败: \(res.message)"
+        } else if provider == .codex {
+            if key.isEmpty {
+                if let res = await CodexService.shared.fetchQuota() {
+                    isTestingConnection = false
+                    testResultMsg = "✅ 连接成功！检测到本地 Codex（\(res.planType.capitalized) 账号: \(res.email)），周期额度剩余 \(res.primaryRemainingPct)%"
+                } else {
+                    isTestingConnection = false
+                    testResultMsg = "❌ 未检测到运行中的本地 Codex，请确保已安装并在终端运行过 codex login"
+                }
+            } else {
+                let res = await CodexService.shared.checkOpenAIKey(apiKey: key)
+                isTestingConnection = false
+                testResultMsg = res.isConnected ? "✅ \(res.message)" : "❌ \(res.message)"
+            }
         } else if provider == .zhipu {
             let res = await ZhipuService.shared.fetchQuotaDetail(apiKey: key)
             isTestingConnection = false

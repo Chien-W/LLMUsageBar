@@ -1,6 +1,6 @@
 # 🌟 LLMUsageBar (AI 用量监控 · macOS 菜单栏原生应用)
 
-一款参考 GitHub 热门开源菜单栏工具（如 Stats、Ice、ClaudeBar）设计的 **macOS 原生菜单栏 (Menu Bar) 工具**。专为开发者打造，实时监控 **Google Gemini**、**Anthropic Claude** 与 **智谱 AI (BigModel)** 的 API 配额与真实用量。
+一款参考 GitHub 热门开源菜单栏工具（如 Stats、Ice、ClaudeBar）设计的 **macOS 原生菜单栏 (Menu Bar) 工具**。专为开发者打造，实时监控 **Google Gemini**、**Anthropic Claude**、**OpenAI Codex** 与 **智谱 AI (BigModel)** 的 API 配额与真实用量。
 
 ---
 
@@ -16,6 +16,7 @@
   - 支持快捷开启/关闭单个账号监控，直观展示实时连通状态与刷新倒计时。
 - ⚡️ **真实用量本地/云端实时同步**：
   - **Antigravity 本地 IDE 极速 RPC 同步**：0.09s 毫秒级直连本地 Language Server，精准获取 Google Gemini (2.5 Pro / Flash) 与 Anthropic Claude (Opus 4 / Sonnet 4) 的真实剩余额度与重置时间倒计时。
+  - **OpenAI Codex CLI 本地极速直连**：自动发现本地 Codex 客户端（`~/.codex`），实时同步账号类型（Free / Plus / Pro）、周期配额剩余比例（如 81%）、重置倒计时与历史 Token 累计用量。
   - **智谱 AI (BigModel / Coding Plan)**：精准解析 5小时滑动窗口额度、周度额度与 MCP 工具调用额度，与官网个人中心完全一致。
 - 🔮 **现代设计与深浅主题自适应**：
   - 原生跟随 macOS 系统深浅色外观切换，高对比度排版，清晰易读。

@@ -2,6 +2,7 @@ import Foundation
 
 enum ProviderType: String, Codable, CaseIterable, Identifiable {
     case google = "Google (Gemini)"
+    case codex = "OpenAI (Codex)"
     case zhipu = "智谱 (zai)"
     case custom = "自定义提供商"
     
@@ -10,6 +11,7 @@ enum ProviderType: String, Codable, CaseIterable, Identifiable {
     var iconName: String {
         switch self {
         case .google: return "sparkles"
+        case .codex: return "terminal.fill"
         case .zhipu: return "bolt.shield.fill"
         case .custom: return "cpu"
         }

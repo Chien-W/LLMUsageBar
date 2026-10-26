@@ -318,6 +318,8 @@ struct AccountsManageView: View {
         switch provider {
         case .google:
             return "粘贴 AIzaSy 开头的 Gemini API Key"
+        case .codex:
+            return "留空自动直连本机 Codex CLI，或粘贴 sk-..."
         case .zhipu:
             return "粘贴 智谱清言 API Key (id.secret)"
         case .custom:
@@ -337,6 +339,8 @@ struct AccountsManageView: View {
         switch provider {
         case .google:
             urlStr = "https://aistudio.google.com/apikey"
+        case .codex:
+            urlStr = "https://platform.openai.com/api-keys"
         case .zhipu:
             urlStr = "https://open.bigmodel.cn/usercenter/apikeys"
         case .custom:
