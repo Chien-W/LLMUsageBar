@@ -97,14 +97,16 @@ final class AppState: ObservableObject {
                     ModelGroupQuota(
                         id: "codex_quota",
                         name: "Codex 模型用量",
-                        weeklyPct: 100,
+                        weeklyPct: 0,
                         fiveHourPct: 100,
                         weeklyDisabled: false,
                         fiveHourDisabled: true,
                         weeklyResetTarget: Date().addingTimeInterval(30 * 86400),
                         fiveHourResetTarget: Date(),
                         weeklyDescription: "正在与 Codex 客户端核对...",
-                        fiveHourDescription: "正在与 Codex 客户端核对..."
+                        fiveHourDescription: "正在与 Codex 客户端核对...",
+                        weeklyTitle: "剩余周期限额",
+                        fiveHourTitle: "调用权限与用量"
                     )
                 ]
             )
@@ -272,8 +274,16 @@ final class AppState: ObservableObject {
                             if !codexRes.email.isEmpty {
                                 accounts[idx].email = codexRes.email
                             }
-                            let planTitle = codexRes.planType.isEmpty ? "Codex" : "Codex (\(codexRes.planType.capitalized))"
-                            accounts[idx].name = "OpenAI \(planTitle)"
+                            let rawPlan = codexRes.planType.lowercased()
+                            let displayPlan: String
+                            if rawPlan == "prolite" {
+                                displayPlan = "Pro Lite"
+                            } else if !rawPlan.isEmpty {
+                                displayPlan = rawPlan.capitalized
+                            } else {
+                                displayPlan = "Free"
+                            }
+                            accounts[idx].name = "OpenAI Codex (\(displayPlan))"
                             
                             let groups = CodexService.shared.buildModelGroups(from: codexRes, now: now)
                             accounts[idx].modelGroups = groups
@@ -305,14 +315,14 @@ final class AppState: ObservableObject {
             
             for grp in acc.modelGroups {
                 let wQuota = QuotaWindowInfo(
-                    title: "剩余周额度",
+                    title: grp.effectiveWeeklyTitle,
                     percentage: grp.weeklyPct,
                     resetDescription: grp.weeklyDescription.isEmpty ? "正在与官方接口核对..." : grp.weeklyDescription,
                     isDisabled: grp.weeklyDisabled ?? false
                 )
                 
                 let fQuota = QuotaWindowInfo(
-                    title: "剩余 5 小时限额",
+                    title: grp.effectiveFiveHourTitle,
                     percentage: grp.fiveHourPct,
                     resetDescription: grp.fiveHourDescription.isEmpty ? "正在与官方接口核对..." : grp.fiveHourDescription,
                     isDisabled: grp.fiveHourDisabled ?? false
@@ -385,14 +395,16 @@ final class AppState: ObservableObject {
                 ModelGroupQuota(
                     id: "codex_quota",
                     name: "Codex 模型用量",
-                    weeklyPct: 100,
+                    weeklyPct: 0,
                     fiveHourPct: 100,
                     weeklyDisabled: false,
                     fiveHourDisabled: true,
                     weeklyResetTarget: now.addingTimeInterval(30 * 86400),
                     fiveHourResetTarget: now,
                     weeklyDescription: apiKey.isEmpty ? "正在与 Codex 客户端核对..." : "OpenAI API 待测试",
-                    fiveHourDescription: "普通调用权限正常"
+                    fiveHourDescription: "普通调用权限正常",
+                    weeklyTitle: "剩余周期限额",
+                    fiveHourTitle: "调用权限与用量"
                 )
             ]
         } else if provider == .zhipu {

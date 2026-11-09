@@ -29,6 +29,16 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
     var fiveHourResetTarget: Date
     var weeklyDescription: String
     var fiveHourDescription: String
+    var weeklyTitle: String? = nil
+    var fiveHourTitle: String? = nil
+    
+    var effectiveWeeklyTitle: String {
+        weeklyTitle ?? (id == "codex_quota" ? "剩余周期限额" : "剩余周额度")
+    }
+    
+    var effectiveFiveHourTitle: String {
+        fiveHourTitle ?? (id == "codex_quota" ? "调用权限与用量" : "剩余 5 小时限额")
+    }
     
     init(
         id: String,
@@ -40,7 +50,9 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
         weeklyResetTarget: Date,
         fiveHourResetTarget: Date,
         weeklyDescription: String,
-        fiveHourDescription: String
+        fiveHourDescription: String,
+        weeklyTitle: String? = nil,
+        fiveHourTitle: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -52,6 +64,8 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
         self.fiveHourResetTarget = fiveHourResetTarget
         self.weeklyDescription = weeklyDescription
         self.fiveHourDescription = fiveHourDescription
+        self.weeklyTitle = weeklyTitle
+        self.fiveHourTitle = fiveHourTitle
     }
 }
 

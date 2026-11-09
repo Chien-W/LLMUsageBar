@@ -14,6 +14,7 @@ struct CodexQuotaResult {
     let secondaryDurationMins: Int?
     let lifetimeTokens: Int?
     let currentStreakDays: Int?
+    let availableResetCredits: Int
     let isConnected: Bool
     let message: String
 }
@@ -23,6 +24,7 @@ final class CodexService: @unchecked Sendable {
     
     func findCodexExecutable() -> String? {
         let candidates = [
+            "/usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
             "/usr/local/bin/codex",
             "/opt/homebrew/bin/codex",
             "\(NSHomeDirectory())/.local/bin/codex"
@@ -102,6 +104,23 @@ final class CodexService: @unchecked Sendable {
                 let proc = Process()
                 proc.executableURL = URL(fileURLWithPath: exe)
                 proc.arguments = ["app-server", "--stdio"]
+                
+                // 关键：补全 PATH，确保不论是调用 wrapper 还是原生二进制都能正常找到依赖
+                var env = ProcessInfo.processInfo.environment
+                let customPaths = [
+                    "/usr/local/bin",
+                    "/usr/local/sbin",
+                    "/opt/homebrew/bin",
+                    "/opt/homebrew/sbin",
+                    "\(NSHomeDirectory())/.local/bin",
+                    "/usr/bin",
+                    "/bin",
+                    "/usr/sbin",
+                    "/sbin"
+                ]
+                let existingPath = env["PATH"] ?? ""
+                env["PATH"] = (customPaths + [existingPath]).filter { !$0.isEmpty }.joined(separator: ":")
+                proc.environment = env
                 
                 let inPipe = Pipe()
                 let outPipe = Pipe()
@@ -195,10 +214,16 @@ final class CodexService: @unchecked Sendable {
                 var secRemaining: Int? = nil
                 var secResetDate: Date? = nil
                 var secDurationMins: Int? = nil
+                var availableResetCredits = 0
                 
                 if let rl = rateLimitsResult {
                     ordinaryAllowed = (rl["ordinaryUsageAllowed"] as? Bool) ?? true
+                    if let resetObj = rl["rateLimitResetCredits"] as? [String: Any],
+                       let count = resetObj["availableCount"] as? Int {
+                        availableResetCredits = count
+                    }
                     if let rates = rl["rateLimits"] as? [String: Any] {
+                        let limitReachedType = rates["rateLimitReachedType"] as? String
                         if let p = rates["primary"] as? [String: Any] {
                             primaryUsed = (p["usedPercent"] as? Int) ?? 0
                             primaryRemaining = max(0, min(100, 100 - primaryUsed))
@@ -206,6 +231,10 @@ final class CodexService: @unchecked Sendable {
                             if let resetsAt = p["resetsAt"] as? Int64 {
                                 primaryResetDate = Date(timeIntervalSince1970: TimeInterval(resetsAt))
                             }
+                        }
+                        // 如果后端标记达到限额或禁止普通调用，剩余额度即为 0%
+                        if limitReachedType == "rate_limit_reached" || !ordinaryAllowed {
+                            primaryRemaining = 0
                         }
                         if let s = rates["secondary"] as? [String: Any] {
                             let sUsed = (s["usedPercent"] as? Int) ?? 0
@@ -240,6 +269,7 @@ final class CodexService: @unchecked Sendable {
                     secondaryDurationMins: secDurationMins,
                     lifetimeTokens: lifetimeTokens,
                     currentStreakDays: streakDays,
+                    availableResetCredits: availableResetCredits,
                     isConnected: true,
                     message: "Codex 本地直连"
                 )
@@ -251,19 +281,22 @@ final class CodexService: @unchecked Sendable {
     /// 构建适合展示的模型组配额列表
     func buildModelGroups(from res: CodexQuotaResult, now: Date) -> [ModelGroupQuota] {
         var weeklyDesc = ""
-        let weeklyTarget = res.primaryResetDate ?? now.addingTimeInterval(30 * 86400)
+        let weeklyTarget = res.primaryResetDate ?? now.addingTimeInterval(7 * 86400)
         let diff = max(0, weeklyTarget.timeIntervalSince(now))
         let days = Int(diff) / 86400
         let hours = (Int(diff) % 86400) / 3600
+        let mins = (Int(diff) % 3600) / 60
         
-        if res.primaryUsedPct > 0 {
-            if days > 0 {
-                weeklyDesc = "已使用 \(res.primaryUsedPct)% 周期配额，将在 \(days) 天 \(hours) 小时后刷新。"
+        let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时 \(mins) 分钟"
+        
+        if !res.ordinaryUsageAllowed || res.primaryRemainingPct <= 0 || res.primaryUsedPct >= 100 {
+            if res.availableResetCredits > 0 {
+                weeklyDesc = "周期配额已用尽（剩余 0%），将在 \(timeStr) 后完全刷新。检测到 \(res.availableResetCredits) 次快速重置可用。"
             } else {
-                weeklyDesc = "已使用 \(res.primaryUsedPct)% 周期配额，将在 \(hours) 小时后刷新。"
+                weeklyDesc = "周期配额已用尽（剩余 0%），将在 \(timeStr) 后完全刷新。"
             }
         } else {
-            weeklyDesc = "周期配额充足，将在 \(days) 天后刷新。"
+            weeklyDesc = "已使用 \(res.primaryUsedPct)% 周期配额，将在 \(timeStr) 后完全刷新。"
         }
         
         var fiveHourDesc = ""
@@ -280,12 +313,21 @@ final class CodexService: @unchecked Sendable {
             let sMins = (Int(sDiff) % 3600) / 60
             fiveHourDesc = "已使用 \(sUsed)% 短期限额，将在 \(sHours) 小时 \(sMins) 分钟后完全刷新。"
         } else {
-            // Free 计划或单周期计划：展示 Token 累计与活跃统计
+            // Free / Pro Lite / 单周限额：展示 Token 统计与当前可用状态
+            var tokenPart = ""
             if let tokens = res.lifetimeTokens {
                 let formatted = NumberFormatter.localizedString(from: NSNumber(value: tokens), number: .decimal)
-                fiveHourDesc = "累计消耗 \(formatted) Tokens · 正常调用权限生效中"
+                tokenPart = "累计消耗 \(formatted) Tokens"
+            }
+            
+            if !res.ordinaryUsageAllowed || res.primaryRemainingPct <= 0 {
+                if res.availableResetCredits > 0 {
+                    fiveHourDesc = "当前调用已达限额暂停 · \(tokenPart) · 支持在终端执行快速重置"
+                } else {
+                    fiveHourDesc = "当前调用已达限额暂停 · \(tokenPart) · 正在等待周期刷新"
+                }
             } else {
-                fiveHourDesc = "普通调用权限正常，无并发限流阻塞"
+                fiveHourDesc = "调用权限正常 · \(tokenPart) · 暂无短周期并发限制"
             }
         }
         
@@ -300,7 +342,9 @@ final class CodexService: @unchecked Sendable {
                 weeklyResetTarget: weeklyTarget,
                 fiveHourResetTarget: fiveHourTarget,
                 weeklyDescription: weeklyDesc,
-                fiveHourDescription: fiveHourDesc
+                fiveHourDescription: fiveHourDesc,
+                weeklyTitle: "剩余周期限额",
+                fiveHourTitle: fiveHourDisabled ? "调用权限与用量" : "剩余短期限额"
             )
         ]
     }

@@ -39,8 +39,8 @@ struct AccountCardView: View {
                 ModelGroupRuntimeStatus(
                     id: grp.id,
                     name: grp.name,
-                    weeklyQuota: QuotaWindowInfo(title: "剩余周额度", percentage: grp.weeklyPct, resetDescription: grp.weeklyDescription, isDisabled: grp.weeklyDisabled ?? false),
-                    fiveHourQuota: QuotaWindowInfo(title: "剩余 5 小时限额", percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription, isDisabled: grp.fiveHourDisabled ?? false)
+                    weeklyQuota: QuotaWindowInfo(title: grp.effectiveWeeklyTitle, percentage: grp.weeklyPct, resetDescription: grp.weeklyDescription, isDisabled: grp.weeklyDisabled ?? false),
+                    fiveHourQuota: QuotaWindowInfo(title: grp.effectiveFiveHourTitle, percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription, isDisabled: grp.fiveHourDisabled ?? false)
                 )
             }
             
