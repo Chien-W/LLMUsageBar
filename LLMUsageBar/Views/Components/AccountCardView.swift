@@ -34,13 +34,13 @@ struct AccountCardView: View {
             // 1. 账号顶部信息栏（账号名称、绑定邮箱、在线状态）
             accountHeader
             
-            // 2. 该账号下的所有模型组（如 Gemini 模型组 + Claude/GPT 模型组）
+            // 2. 该账号下的所有模型组（如 Gemini 模型组 + Claude/GPT 模型组 + Gemini 4 Argon）
             let groups = status?.groups ?? account.modelGroups.map { grp in
                 ModelGroupRuntimeStatus(
                     id: grp.id,
                     name: grp.name,
                     weeklyQuota: QuotaWindowInfo(title: grp.effectiveWeeklyTitle, percentage: grp.weeklyPct, resetDescription: grp.weeklyDescription, isDisabled: grp.weeklyDisabled ?? false),
-                    fiveHourQuota: QuotaWindowInfo(title: grp.effectiveFiveHourTitle, percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription, isDisabled: grp.fiveHourDisabled ?? false)
+                    fiveHourQuota: (grp.hasFiveHourQuota ?? true) ? QuotaWindowInfo(title: grp.effectiveFiveHourTitle, percentage: grp.fiveHourPct, resetDescription: grp.fiveHourDescription, isDisabled: grp.fiveHourDisabled ?? false) : nil
                 )
             }
             
@@ -105,7 +105,7 @@ struct AccountCardView: View {
         .padding(.horizontal, 2)
     }
     
-    // 单个模型组面板（内含 周额度 + 5小时限额 两道进度条）
+    // 单个模型组面板（根据 hasFiveHourQuota 动态渲染单轨或双轨）
     private func modelGroupSection(group: ModelGroupRuntimeStatus) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // 模型组标题
@@ -124,14 +124,16 @@ struct AccountCardView: View {
             }
             .padding(.horizontal, 4)
             
-            // 双轨配额容器卡片
+            // 配额容器卡片（支持单轨周额度或双轨周额度+5小时限额）
             VStack(spacing: 0) {
                 quotaRow(info: group.weeklyQuota)
                 
-                Divider()
-                    .opacity(isDark ? 0.2 : 0.4)
-                
-                quotaRow(info: group.fiveHourQuota)
+                if let fiveHour = group.fiveHourQuota {
+                    Divider()
+                        .opacity(isDark ? 0.2 : 0.4)
+                    
+                    quotaRow(info: fiveHour)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 9)
@@ -181,10 +183,11 @@ struct AccountCardView: View {
     // 紧凑圆环指示器
     private func compactRing(percentage: Int) -> some View {
         let isZero = percentage <= 0
-        let ringColor = isZero ? Color(white: isDark ? 0.35 : 0.70) : Color(red: 0.20, green: 0.82, blue: 0.40)
+        let ringColor = Color(red: 0.20, green: 0.82, blue: 0.40)
         let ringBg = isDark ? Color(white: 0.22) : Color.black.opacity(0.10)
         
         return ZStack {
+            // 背景底圈（用尽 0% 时仅呈现原生浅灰底圈，与官方一致）
             Circle()
                 .stroke(ringBg, lineWidth: 3.2)
             
@@ -196,9 +199,6 @@ struct AccountCardView: View {
                         style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-            } else {
-                Circle()
-                    .stroke(ringColor, lineWidth: 3.2)
             }
         }
         .frame(width: 22, height: 22)

@@ -152,28 +152,63 @@ final class AppState: ObservableObject {
             let portStr = "Port \(live.port)"
             self.ideConnectionStatusText = "🟢 IDE 官方接口实时核对中 (\(portStr))"
             
-            // 找到或关联当前 Google 账号
-            if let accIdx = accounts.firstIndex(where: { $0.provider == .google }) {
+            // 找到或关联与当前 IDE 登录邮箱匹配的 Google 账号（支持多账号切换）
+            let targetAccIdx: Int?
+            if let uEmail = live.userEmail, !uEmail.isEmpty,
+               let matchIdx = accounts.firstIndex(where: { $0.provider == .google && $0.email.lowercased() == uEmail.lowercased() }) {
+                targetAccIdx = matchIdx
+            } else if let ideIdx = accounts.firstIndex(where: { $0.provider == .google && $0.apiKey.isEmpty }) {
+                targetAccIdx = ideIdx
+            } else {
+                targetAccIdx = accounts.firstIndex(where: { $0.provider == .google })
+            }
+            
+            if let accIdx = targetAccIdx {
                 if let uEmail = live.userEmail, !uEmail.isEmpty {
                     accounts[accIdx].email = uEmail
                 }
                 if let uTier = live.userTier, !uTier.isEmpty {
-                    accounts[accIdx].name = uTier
+                    if accounts[accIdx].name.isEmpty || accounts[accIdx].name.contains("Google AI") || accounts[accIdx].name == "Google (Gemini)" {
+                        accounts[accIdx].name = uTier
+                    }
                 }
                 
-                var updatedGroups: [ModelGroupQuota] = accounts[accIdx].modelGroups
+                var updatedGroups: [ModelGroupQuota] = []
                 
                 for rpcGroup in live.groups {
                     let gNameLower = rpcGroup.displayName.lowercased()
-                    let isGemini = gNameLower.contains("gemini")
-                    let targetGroupId = isGemini ? "gemini" : "claude_gpt"
-                    let targetGroupName = isGemini ? "Gemini 模型" : "Claude 和 GPT 模型"
+                    let targetGroupId: String
+                    let targetGroupName: String
+                    let wTitle: String
+                    
+                    if gNameLower.contains("argon") {
+                        targetGroupId = "gemini_argon"
+                        targetGroupName = "Gemini 4 Argon"
+                        wTitle = "Gemini 4 Argon 剩余周额度"
+                    } else if gNameLower.contains("claude") || gNameLower.contains("gpt") || gNameLower.contains("3p") {
+                        targetGroupId = "claude_gpt"
+                        targetGroupName = "Claude 和 GPT 模型"
+                        wTitle = "剩余周额度"
+                    } else if gNameLower.contains("gemini") {
+                        targetGroupId = "gemini"
+                        targetGroupName = "Gemini 模型"
+                        wTitle = "剩余周额度"
+                    } else {
+                        targetGroupId = rpcGroup.displayName
+                            .lowercased()
+                            .replacingOccurrences(of: " ", with: "_")
+                        targetGroupName = rpcGroup.displayName
+                        wTitle = "剩余周额度"
+                    }
                     
                     var weeklyBucket = rpcGroup.buckets.first { $0.window.lowercased().contains("week") }
-                    var fiveHourBucket = rpcGroup.buckets.first { $0.window.lowercased().contains("5h") }
+                    let fiveHourBucket = rpcGroup.buckets.first { $0.window.lowercased().contains("5h") }
                     
-                    if weeklyBucket == nil && rpcGroup.buckets.count > 0 { weeklyBucket = rpcGroup.buckets[0] }
-                    if fiveHourBucket == nil && rpcGroup.buckets.count > 1 { fiveHourBucket = rpcGroup.buckets[1] }
+                    if weeklyBucket == nil && fiveHourBucket == nil && !rpcGroup.buckets.isEmpty {
+                        weeklyBucket = rpcGroup.buckets[0]
+                    }
+                    
+                    let hasFiveHour = fiveHourBucket != nil
                     
                     let wDisabled = weeklyBucket?.isDisabled ?? false
                     let fDisabled = fiveHourBucket?.isDisabled ?? false
@@ -184,29 +219,21 @@ final class AppState: ObservableObject {
                     let wDesc = weeklyBucket?.localizedDescription ?? ""
                     let fDesc = fiveHourBucket?.localizedDescription ?? ""
                     
-                    if let grpIdx = updatedGroups.firstIndex(where: { $0.id == targetGroupId }) {
-                        updatedGroups[grpIdx].weeklyPct = wPct
-                        updatedGroups[grpIdx].fiveHourPct = fPct
-                        updatedGroups[grpIdx].weeklyDisabled = wDisabled
-                        updatedGroups[grpIdx].fiveHourDisabled = fDisabled
-                        updatedGroups[grpIdx].weeklyResetTarget = wDate
-                        updatedGroups[grpIdx].fiveHourResetTarget = fDate
-                        updatedGroups[grpIdx].weeklyDescription = wDesc
-                        updatedGroups[grpIdx].fiveHourDescription = fDesc
-                    } else {
-                        updatedGroups.append(ModelGroupQuota(
-                            id: targetGroupId,
-                            name: targetGroupName,
-                            weeklyPct: wPct,
-                            fiveHourPct: fPct,
-                            weeklyDisabled: wDisabled,
-                            fiveHourDisabled: fDisabled,
-                            weeklyResetTarget: wDate,
-                            fiveHourResetTarget: fDate,
-                            weeklyDescription: wDesc,
-                            fiveHourDescription: fDesc
-                        ))
-                    }
+                    updatedGroups.append(ModelGroupQuota(
+                        id: targetGroupId,
+                        name: targetGroupName,
+                        weeklyPct: wPct,
+                        fiveHourPct: fPct,
+                        weeklyDisabled: wDisabled,
+                        fiveHourDisabled: fDisabled,
+                        weeklyResetTarget: wDate,
+                        fiveHourResetTarget: fDate,
+                        weeklyDescription: wDesc,
+                        fiveHourDescription: fDesc,
+                        weeklyTitle: wTitle,
+                        fiveHourTitle: "剩余 5 小时限额",
+                        hasFiveHourQuota: hasFiveHour
+                    ))
                 }
                 
                 accounts[accIdx].modelGroups = updatedGroups
@@ -298,9 +325,31 @@ final class AppState: ObservableObject {
                 }
             } else if acc.provider == .google && !acc.apiKey.isEmpty {
                 let res = await GeminiService.shared.checkConnection(apiKey: acc.apiKey)
-                if let idx = accounts.firstIndex(where: { $0.id == acc.id }), !accounts[idx].modelGroups.isEmpty {
-                    accounts[idx].modelGroups[0].weeklyDescription = "可用模型: \(res.modelsCount) 个 (延迟 \(res.latencyMs)ms)"
-                    accounts[idx].modelGroups[0].fiveHourDescription = res.message
+                if let idx = accounts.firstIndex(where: { $0.id == acc.id }) {
+                    let desc = res.isConnected
+                        ? "检测到 \(res.modelsCount) 个可用模型 (网络延迟 \(res.latencyMs)ms)"
+                        : "连接异常: \(res.message)"
+                    let statusDesc = res.isConnected
+                        ? "API Key 授权有效，随时可用于模型推理"
+                        : "无法访问 Google API: \(res.message)"
+                    
+                    let grp = ModelGroupQuota(
+                        id: "gemini_api_\(acc.id.uuidString.prefix(6))",
+                        name: "Gemini API (Google AI Studio)",
+                        weeklyPct: res.isConnected ? 100 : 0,
+                        fiveHourPct: res.isConnected ? 100 : 0,
+                        weeklyDisabled: false,
+                        fiveHourDisabled: false,
+                        weeklyResetTarget: now.addingTimeInterval(30 * 86400),
+                        fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
+                        weeklyDescription: desc,
+                        fiveHourDescription: statusDesc,
+                        weeklyTitle: "模型库与网络延迟",
+                        fiveHourTitle: "API 密钥调用权限",
+                        hasFiveHourQuota: true
+                    )
+                    accounts[idx].modelGroups = [grp]
+                    ConfigManager.shared.accounts = accounts
                 }
             }
         }
@@ -321,12 +370,17 @@ final class AppState: ObservableObject {
                     isDisabled: grp.weeklyDisabled ?? false
                 )
                 
-                let fQuota = QuotaWindowInfo(
-                    title: grp.effectiveFiveHourTitle,
-                    percentage: grp.fiveHourPct,
-                    resetDescription: grp.fiveHourDescription.isEmpty ? "正在与官方接口核对..." : grp.fiveHourDescription,
-                    isDisabled: grp.fiveHourDisabled ?? false
-                )
+                let fQuota: QuotaWindowInfo?
+                if grp.hasFiveHourQuota ?? true {
+                    fQuota = QuotaWindowInfo(
+                        title: grp.effectiveFiveHourTitle,
+                        percentage: grp.fiveHourPct,
+                        resetDescription: grp.fiveHourDescription.isEmpty ? "正在与官方接口核对..." : grp.fiveHourDescription,
+                        isDisabled: grp.fiveHourDisabled ?? false
+                    )
+                } else {
+                    fQuota = nil
+                }
                 
                 groupStatuses.append(ModelGroupRuntimeStatus(
                     id: grp.id,
@@ -342,11 +396,31 @@ final class AppState: ObservableObject {
             let msg: String
             
             if isLocalIde {
-                isConn = isIdeConnected
-                msg = isIdeConnected ? "IDE 实时直连" : "等待 IDE 启动"
+                let isCurrentIdeUser: Bool
+                if let liveEmail = LocalIDEService.shared.cachedUserEmail, !liveEmail.isEmpty, !acc.email.isEmpty {
+                    isCurrentIdeUser = acc.email.lowercased() == liveEmail.lowercased()
+                } else {
+                    isCurrentIdeUser = true
+                }
+                
+                if isIdeConnected && isCurrentIdeUser {
+                    isConn = true
+                    msg = "IDE 实时直连"
+                } else if isIdeConnected && !isCurrentIdeUser {
+                    isConn = false
+                    msg = "IDE 离线 (请在 IDE 切换此账号)"
+                } else {
+                    isConn = false
+                    msg = "等待 IDE 启动"
+                }
             } else if isLocalCodex {
                 isConn = true
                 msg = "Codex 本地直连"
+            } else if acc.provider == .google && !acc.apiKey.isEmpty {
+                let firstGrpDesc = acc.modelGroups.first?.weeklyDescription ?? ""
+                let isOk = !firstGrpDesc.contains("连接异常") && !firstGrpDesc.contains("失败")
+                isConn = isOk
+                msg = isOk ? "API Key 在线" : "连接失败"
             } else {
                 isConn = !acc.apiKey.isEmpty
                 msg = "API Key 授权"
@@ -364,32 +438,82 @@ final class AppState: ObservableObject {
     
     func addAccount(name: String, email: String, provider: ProviderType, apiKey: String) {
         let now = Date()
-        let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? provider.rawValue : name
+        var finalName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if finalName.isEmpty {
+            if provider == .google {
+                if apiKey.isEmpty {
+                    finalName = !email.isEmpty ? "Google (\(email))" : "Google AI Pro (IDE)"
+                } else {
+                    finalName = !email.isEmpty ? "Gemini API (\(email))" : "Google Gemini API"
+                }
+            } else {
+                finalName = provider.rawValue
+            }
+        }
         
         var groups: [ModelGroupQuota] = []
         if provider == .google {
-            groups = [
-                ModelGroupQuota(
-                    id: "gemini",
-                    name: "Gemini 模型",
-                    weeklyPct: 100,
-                    fiveHourPct: 100,
-                    weeklyResetTarget: now.addingTimeInterval(7 * 86400),
-                    fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
-                    weeklyDescription: "额度充足，将在 7 天后刷新。",
-                    fiveHourDescription: "额度充足，将在 5 小时后刷新。"
-                ),
-                ModelGroupQuota(
-                    id: "claude_gpt",
-                    name: "Claude 和 GPT 模型",
-                    weeklyPct: 100,
-                    fiveHourPct: 100,
-                    weeklyResetTarget: now.addingTimeInterval(7 * 86400),
-                    fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
-                    weeklyDescription: "额度充足，将在 7 天后刷新。",
-                    fiveHourDescription: "额度充足，将在 5 小时后刷新。"
-                )
-            ]
+            if apiKey.isEmpty {
+                // IDE 直连/切换账号预设模型组
+                groups = [
+                    ModelGroupQuota(
+                        id: "gemini",
+                        name: "Gemini 模型",
+                        weeklyPct: 100,
+                        fiveHourPct: 100,
+                        weeklyResetTarget: now.addingTimeInterval(7 * 86400),
+                        fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
+                        weeklyDescription: "等待在 Antigravity 中切换登录此账号...",
+                        fiveHourDescription: "等待在 Antigravity 中切换登录此账号...",
+                        weeklyTitle: "剩余周额度",
+                        fiveHourTitle: "剩余 5 小时限额",
+                        hasFiveHourQuota: true
+                    ),
+                    ModelGroupQuota(
+                        id: "claude_gpt",
+                        name: "Claude 和 GPT 模型",
+                        weeklyPct: 100,
+                        fiveHourPct: 100,
+                        weeklyResetTarget: now.addingTimeInterval(7 * 86400),
+                        fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
+                        weeklyDescription: "等待在 Antigravity 中切换登录此账号...",
+                        fiveHourDescription: "等待在 Antigravity 中切换登录此账号...",
+                        weeklyTitle: "剩余周额度",
+                        fiveHourTitle: "剩余 5 小时限额",
+                        hasFiveHourQuota: true
+                    ),
+                    ModelGroupQuota(
+                        id: "gemini_argon",
+                        name: "Gemini 4 Argon",
+                        weeklyPct: 100,
+                        fiveHourPct: 100,
+                        weeklyResetTarget: now.addingTimeInterval(7 * 86400),
+                        fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
+                        weeklyDescription: "等待在 Antigravity 中切换登录此账号...",
+                        fiveHourDescription: "等待在 Antigravity 中切换登录此账号...",
+                        weeklyTitle: "Gemini 4 Argon 剩余周额度",
+                        fiveHourTitle: "剩余 5 小时限额",
+                        hasFiveHourQuota: false
+                    )
+                ]
+            } else {
+                // Google AI Studio API Key 账号
+                groups = [
+                    ModelGroupQuota(
+                        id: "gemini_api",
+                        name: "Gemini API (Google AI Studio)",
+                        weeklyPct: 100,
+                        fiveHourPct: 100,
+                        weeklyResetTarget: now.addingTimeInterval(30 * 86400),
+                        fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
+                        weeklyDescription: "正在连接 Google AI Studio...",
+                        fiveHourDescription: "API 密钥权限核对中...",
+                        weeklyTitle: "模型库与网络延迟",
+                        fiveHourTitle: "API 密钥调用权限",
+                        hasFiveHourQuota: true
+                    )
+                ]
+            }
         } else if provider == .codex {
             groups = [
                 ModelGroupQuota(
@@ -404,7 +528,8 @@ final class AppState: ObservableObject {
                     weeklyDescription: apiKey.isEmpty ? "正在与 Codex 客户端核对..." : "OpenAI API 待测试",
                     fiveHourDescription: "普通调用权限正常",
                     weeklyTitle: "剩余周期限额",
-                    fiveHourTitle: "调用权限与用量"
+                    fiveHourTitle: "调用权限与用量",
+                    hasFiveHourQuota: true
                 )
             ]
         } else if provider == .zhipu {
@@ -417,7 +542,10 @@ final class AppState: ObservableObject {
                     weeklyResetTarget: now.addingTimeInterval(30 * 86400),
                     fiveHourResetTarget: now.addingTimeInterval(5 * 3600),
                     weeklyDescription: "Token 余额监控正常。",
-                    fiveHourDescription: "并发请求数在合理限度内。"
+                    fiveHourDescription: "并发请求数在合理限度内。",
+                    weeklyTitle: "剩余周额度",
+                    fiveHourTitle: "剩余 5 小时限额",
+                    hasFiveHourQuota: true
                 )
             ]
         }
@@ -459,9 +587,20 @@ final class AppState: ObservableObject {
         let provider = newAccountProvider
         
         if provider == .google {
-            let res = await GeminiService.shared.checkConnection(apiKey: key)
-            isTestingConnection = false
-            testResultMsg = res.isConnected ? "✅ 连接成功！检测到 \(res.modelsCount) 个可用模型" : "❌ 连接失败: \(res.message)"
+            if key.isEmpty {
+                if let live = await LocalIDEService.shared.fetchQuota() {
+                    let emailStr = live.userEmail.map { "（当前已登录账号: \($0)）" } ?? ""
+                    isTestingConnection = false
+                    testResultMsg = "✅ 本地 IDE 语言服务连接正常！\(emailStr)"
+                } else {
+                    isTestingConnection = false
+                    testResultMsg = "🟡 未检测到运行中的 IDE 语言服务，请确保 Antigravity 已打开"
+                }
+            } else {
+                let res = await GeminiService.shared.checkConnection(apiKey: key)
+                isTestingConnection = false
+                testResultMsg = res.isConnected ? "✅ 连接成功！检测到 \(res.modelsCount) 个可用模型 (延迟 \(res.latencyMs)ms)" : "❌ 连接失败: \(res.message)"
+            }
         } else if provider == .codex {
             if key.isEmpty {
                 if let res = await CodexService.shared.fetchQuota() {

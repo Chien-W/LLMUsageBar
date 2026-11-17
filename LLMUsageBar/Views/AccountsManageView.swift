@@ -148,6 +148,20 @@ struct AccountsManageView: View {
                     .font(.system(size: 11))
             }
             
+            // 多账号监控操作提示
+            if state.newAccountProvider == .google {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 10))
+                        .foregroundColor(.accentColor)
+                    Text("支持同时监控多个 Gemini 账号：当前在 IDE 登录的账号会自动免 Key 直连同步；其他账号可填入各自的 Google AI Studio API Key 进行并发在线监控，或填入邮箱以便在 IDE 切换账号时自动识别匹配。")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 2)
+            }
+            
             if let result = state.testResultMsg {
                 Text(result)
                     .font(.system(size: 10))
@@ -182,7 +196,7 @@ struct AccountsManageView: View {
                 .font(.system(size: 11))
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(state.newAccountApiKey.trimmingCharacters(in: .whitespaces).isEmpty || state.isTestingConnection)
+                .disabled(state.isTestingConnection || (state.newAccountApiKey.trimmingCharacters(in: .whitespaces).isEmpty && state.newAccountProvider != .google && state.newAccountProvider != .codex))
                 
                 // 确认保存
                 Button("确认保存") {
@@ -199,7 +213,7 @@ struct AccountsManageView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(state.newAccountApiKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!canSaveNewAccount)
             }
         }
         .padding(12)
@@ -211,6 +225,22 @@ struct AccountsManageView: View {
                         .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
                 )
         )
+    }
+    
+    private var canSaveNewAccount: Bool {
+        let key = state.newAccountApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = state.newAccountEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = state.newAccountName.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch state.newAccountProvider {
+        case .google:
+            return !key.isEmpty || !email.isEmpty || !name.isEmpty
+        case .codex:
+            return true
+        case .zhipu:
+            return !key.isEmpty
+        case .custom:
+            return !key.isEmpty || !name.isEmpty
+        }
     }
     
     private func accountRow(acc: Account) -> some View {
@@ -236,6 +266,14 @@ struct AccountsManageView: View {
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(Color.green.opacity(0.12))
+                                .cornerRadius(3)
+                        } else if acc.provider == .google {
+                            Text("🔑 Gemini API Key")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.12))
                                 .cornerRadius(3)
                         } else {
                             Text("🔑 API Key 授权")
@@ -281,9 +319,15 @@ struct AccountsManageView: View {
                     HStack(spacing: 3) {
                         Text(grp.name)
                             .font(.system(size: 9, weight: .semibold))
-                        Text("\(grp.weeklyPct)% / \(grp.fiveHourPct)%")
-                            .font(.system(size: 9, design: .rounded))
-                            .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        if grp.hasFiveHourQuota ?? true {
+                            Text("\(grp.weeklyPct)% / \(grp.fiveHourPct)%")
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        } else {
+                            Text("\(grp.weeklyPct)%")
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        }
                     }
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
@@ -317,7 +361,7 @@ struct AccountsManageView: View {
     private func apiKeyPlaceholder(for provider: ProviderType) -> String {
         switch provider {
         case .google:
-            return "粘贴 AIzaSy 开头的 Gemini API Key"
+            return "AIzaSy... (若留空则在 IDE 切换登录该账号时自动直连)"
         case .codex:
             return "留空自动直连本机 Codex CLI，或粘贴 sk-..."
         case .zhipu:

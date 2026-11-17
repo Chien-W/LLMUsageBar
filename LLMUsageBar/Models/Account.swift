@@ -31,6 +31,7 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
     var fiveHourDescription: String
     var weeklyTitle: String? = nil
     var fiveHourTitle: String? = nil
+    var hasFiveHourQuota: Bool? = true
     
     var effectiveWeeklyTitle: String {
         weeklyTitle ?? (id == "codex_quota" ? "剩余周期限额" : "剩余周额度")
@@ -52,7 +53,8 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
         weeklyDescription: String,
         fiveHourDescription: String,
         weeklyTitle: String? = nil,
-        fiveHourTitle: String? = nil
+        fiveHourTitle: String? = nil,
+        hasFiveHourQuota: Bool? = true
     ) {
         self.id = id
         self.name = name
@@ -66,6 +68,7 @@ struct ModelGroupQuota: Identifiable, Codable, Equatable {
         self.fiveHourDescription = fiveHourDescription
         self.weeklyTitle = weeklyTitle
         self.fiveHourTitle = fiveHourTitle
+        self.hasFiveHourQuota = hasFiveHourQuota
     }
 }
 
@@ -125,7 +128,7 @@ struct ModelGroupRuntimeStatus: Identifiable {
     var id: String
     var name: String
     var weeklyQuota: QuotaWindowInfo
-    var fiveHourQuota: QuotaWindowInfo
+    var fiveHourQuota: QuotaWindowInfo?
 }
 
 struct AccountRuntimeStatus: Identifiable {

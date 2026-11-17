@@ -40,6 +40,8 @@ struct LiveQuotaResult {
 final class LocalIDEService {
     static let shared = LocalIDEService()
     
+    private(set) var cachedUserEmail: String?
+    private(set) var cachedUserTier: String?
     private var cachedPort: Int?
     private var cachedCsrfToken: String?
     private lazy var session: URLSession = {
@@ -139,8 +141,8 @@ final class LocalIDEService {
                     let resetDate = parseISODate(resetTimeRaw)
                     
                     let locDesc = formatLocalizedDescription(
-                        isClaudeGroup: displayName.lowercased().contains("claude"),
-                        isWeekly: window.lowercased().contains("week"),
+                        groupDisplayName: displayName,
+                        window: window,
                         pct: pct,
                         isDisabled: isDisabled,
                         resetDate: resetDate,
@@ -166,6 +168,8 @@ final class LocalIDEService {
             }
             
             let (uEmail, uTier) = await fetchUserInfo(port: port, csrfToken: csrfToken)
+            self.cachedUserEmail = uEmail
+            self.cachedUserTier = uTier
             return LiveQuotaResult(groups: groups, port: port, csrfToken: csrfToken, userEmail: uEmail, userTier: uTier)
         } catch {
             return nil
@@ -196,8 +200,8 @@ final class LocalIDEService {
     }
     
     private func formatLocalizedDescription(
-        isClaudeGroup: Bool,
-        isWeekly: Bool,
+        groupDisplayName: String,
+        window: String,
         pct: Int,
         isDisabled: Bool,
         resetDate: Date?,
@@ -210,6 +214,11 @@ final class LocalIDEService {
         let hours = (Int(diff) % 86400) / 3600
         let mins = (Int(diff) % 3600) / 60
         
+        let gNameLower = groupDisplayName.lowercased()
+        let isArgon = gNameLower.contains("argon")
+        let isClaudeGroup = gNameLower.contains("claude") || gNameLower.contains("gpt") || gNameLower.contains("3p")
+        let isWeekly = window.lowercased().contains("week")
+        
         let hitWeekly = fallbackDesc.lowercased().contains("hit your weekly limit")
         let hit5h = fallbackDesc.lowercased().contains("hit your 5-hour limit")
         
@@ -220,6 +229,15 @@ final class LocalIDEService {
                 return "You have hit your weekly limit, the 5-hour limit does not currently apply. Your weekly limit will fully refresh in \(timeStr)."
             }
             return fallbackDesc
+        }
+        
+        if isArgon {
+            let timeStr = days > 0 ? "\(days) 天 \(hours) 小时" : "\(hours) 小时"
+            if hitWeekly || pct <= 0 {
+                return "您已用尽 Argon 周额度，将在 \(timeStr) 后完全刷新。支持的付费方案可使用 AI 积分。"
+            } else {
+                return "您已使用部分 Argon 周额度，将在 \(timeStr) 后完全刷新。"
+            }
         }
         
         if isClaudeGroup {
